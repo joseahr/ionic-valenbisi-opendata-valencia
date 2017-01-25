@@ -1,0 +1,21 @@
+<ion-header>
+  <ion-navbar>
+    <ion-searchbar #sb [hidden]="!searching" autocorrect="on" spellcheck=true (ionInput)="searchAddress($event)" (ionBlur)="searching = false;" animated=true placeholder="Buscar calle"></ion-searchbar>
+    <button *ngIf="!searching" ion-button menuToggle>
+      <ion-icon name="menu"></ion-icon>
+    </button>
+    <ion-title *ngIf="!searching">ValenBisi</ion-title>
+  </ion-navbar>
+</ion-header>
+
+<ion-content padding>
+  <div id="map"></div>
+  <img id="geolocation_marker"/>
+  <ion-fab bottom right>
+    <button ion-fab mini color="primary"><ion-icon name="options"></ion-icon></button>
+    <ion-fab-list side="top">
+      <button ion-fab (click)="getPosition()"><ion-icon name="locate"></ion-icon></button>
+      <button ion-fab (click)="searching = !searching;"><ion-icon name="search"></ion-icon></button>
+    </ion-fab-list>
+  </ion-fab>
+</ion-content>
