@@ -1,5 +1,5 @@
 import { Component, ViewChild } from '@angular/core';
-import { LocalNotifications, Geolocation, Geoposition, Diagnostic } from 'ionic-native';
+import { LocalNotifications, Geolocation, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
 import { ModalController, NavController, Platform, Searchbar } from 'ionic-angular';
 //import { Insomnia } from 'ionic-native';
 import { IVBCollection, INominatimResponse, IOSMRouteResponse } from '../../interfaces';
@@ -18,7 +18,13 @@ declare const proj4: any;
 @Component({
   selector: 'page-page1',
   templateUrl: 'page1.html',
-  providers : [EstacionesVBService, ProjectionService, StyleService, LocationService, NominatimService, OSMRouteService]
+  providers : [ EstacionesVBService
+              , ProjectionService
+              , StyleService
+              , LocationService
+              , NominatimService
+              , OSMRouteService
+              ]
 })
 export class Page1 {
 
@@ -28,8 +34,8 @@ export class Page1 {
   map : any;
   geojsonParser : any;
   proj4 : any;
-  olGeolocation : any;
-  olLocationListener : any;
+  //olGeolocation : any;
+  //olLocationListener : any;
 
   layerVB : any;
   clusterSource : any;
@@ -131,14 +137,14 @@ export class Page1 {
     });
     this.projService.setProjection(this.map, '25830');
 
-    this.olGeolocation = new ol.Geolocation({
+    /*this.olGeolocation = new ol.Geolocation({
       projection: this.map.getView().getProjection(),
       trackingOptions: {
         maximumAge: 10000,
         enableHighAccuracy: true,
         timeout: 600000
       }
-    });
+    });*/
 
     this.map.addLayer(this.searchLayer);
     this.map.addLayer(this.routeLayer);
@@ -164,7 +170,11 @@ export class Page1 {
           
           Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
             if(!gpsEnabled){
-              Diagnostic.switchToLocationSettings();
+              Dialogs
+              .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
+              .then(dialogNumber =>{
+                if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
+              });
               return;
             }
 
@@ -190,7 +200,7 @@ export class Page1 {
                   // Obtener la posición
                   this.map.on('postcompose', this.updateView.bind(this));
                   this.map.render();
-                  this.olLocationListener = this.olGeolocation.on('change', event =>{
+                  /*this.olLocationListener = this.olGeolocation.on('change', event =>{
                     let position = this.olGeolocation.getPosition();
                     let accuracy = this.olGeolocation.getAccuracy();
                     let heading = this.olGeolocation.getHeading() || 0;
@@ -204,9 +214,10 @@ export class Page1 {
                     if (len >= 2) {
                       this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
                     }
-                  })
-                  /*this.locationService.startTracking(
+                  })*/
+                  this.locationService.startTracking(
                     (position : Geoposition) =>{
+                      //alert(position.coords.heading);
                       let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
                                   'EPSG:4326', this.map.getView().getProjection());
                       let accuracy = position.coords.accuracy;
@@ -222,7 +233,7 @@ export class Page1 {
                         this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
                       }
                     }
-                  )*/
+                  );
                 }
               );
 
@@ -313,18 +324,29 @@ export class Page1 {
   } 
 
   getPosition(){
-    Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
-      console.log('ppppppppp', position);
-      let feature = new ol.Feature({
-        geometry : new ol.geom.Point([position.coords.longitude, position.coords.latitude])
-      });
-      /*
-      this.myLocationLayer.getSource().clear();
-      this.myLocationLayer.getSource().refresh();
-      this.myLocationLayer.getSource().addFeature(feature);
-      */
-      this.map.getView().setCenter([position.coords.longitude, position.coords.latitude])
-    })
+    Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+      if(!gpsEnabled){
+        Dialogs
+        .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
+        .then(dialogNumber =>{
+          if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
+        });
+        return;
+      }
+
+      Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
+        console.log('ppppppppp', position);
+        let feature = new ol.Feature({
+          geometry : new ol.geom.Point([position.coords.longitude, position.coords.latitude])
+        });
+        /*
+        this.myLocationLayer.getSource().clear();
+        this.myLocationLayer.getSource().refresh();
+        this.myLocationLayer.getSource().addFeature(feature);
+        */
+        this.map.getView().setCenter([position.coords.longitude, position.coords.latitude])
+      })
+    });
   }
 
   // convert radians to degrees
@@ -341,8 +363,11 @@ export class Page1 {
   }
 
   addPosition(position, heading, m, speed) {
+    console.log('heading', heading);
+    heading = this.degToRad(heading);
     let x = position[0];
     let y = position[1];
+
     let fCoords = this.positions.getCoordinates();
     let previous = fCoords[fCoords.length - 1];
     let prevHeading = previous && previous[2];
@@ -384,7 +409,7 @@ export class Page1 {
   updateView() {
     // use sampling period to get a smooth transition
     let m = Date.now() - this.deltaMean * 1.5;
-    m = Math.max(m, this.previousM);
+        m = Math.max(m, this.previousM);
     this.previousM = m;
     // interpolate position along positions LineString
     let c = this.positions.getCoordinateAtM(m, true);
