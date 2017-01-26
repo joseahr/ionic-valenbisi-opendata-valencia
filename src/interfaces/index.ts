@@ -27,8 +27,10 @@ export declare interface IVBCollection {
 }
 
 export declare interface IProjection {
-    epsg : number | string,
-    proj : string
+  code : string,
+  name : string,
+  proj4 : string, 
+  bbox : Array<number>
 }
 
 export declare interface INominatimResponse {

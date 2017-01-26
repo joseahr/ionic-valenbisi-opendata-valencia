@@ -28,6 +28,8 @@ export class Page1 {
   map : any;
   geojsonParser : any;
   proj4 : any;
+  olGeolocation : any;
+  olLocationListener : any;
 
   layerVB : any;
   clusterSource : any;
@@ -39,7 +41,7 @@ export class Page1 {
 
   searchLayer : any;
   routeLayer : any;
-  myLocationLayer : any;
+  //myLocationLayer : any;
 
   positions : any;
   previousM : number = 0;
@@ -83,9 +85,9 @@ export class Page1 {
       style  : this.styleService.getRouteStyle()
     });
 
-    this.myLocationLayer = new ol.layer.Vector({
+    /*this.myLocationLayer = new ol.layer.Vector({
       source : new ol.source.Vector()
-    });
+    });*/
 
     this.markerEl = document.getElementById('geolocation_marker');
 
@@ -127,69 +129,106 @@ export class Page1 {
         zoom: 2
       })
     });
+    this.projService.setProjection(this.map, '25830');
+
+    this.olGeolocation = new ol.Geolocation({
+      projection: this.map.getView().getProjection(),
+      trackingOptions: {
+        maximumAge: 10000,
+        enableHighAccuracy: true,
+        timeout: 600000
+      }
+    });
 
     this.map.addLayer(this.searchLayer);
     this.map.addLayer(this.routeLayer);
-    this.map.addLayer(this.myLocationLayer);
+    //this.map.addLayer(this.myLocationLayer);
     this.map.addLayer(this.clusterLayer);
 
     this.map.addOverlay(this.marker);
 
     this.hideAttribution();
 
-    let selectCluster = new ol.interaction.SelectCluster({
-    });
-
-    this.map.addInteraction(selectCluster);
-
-    selectCluster.getFeatures().on(['add'], (e)=>{
-     let features = e.element.get('features');
+    this.map.on('click', event =>{
+      if(event.dragging) return;
+      if(!this.map.hasFeatureAtPixel(event.pixel, { hitTolerance : 20 })) return;
+      let coo = event.coordinate;
+      let closest = this.clusterSource.getClosestFeatureToCoordinate(coo);
+      console.log('closest ->', closest);
+      let features = closest.get('features');
      
       if(features.length == 1){
-        console.log(features, 'fff')
         let modal = this.modalCtrl.create(ModalPage, { properties : features[0].values_ });
         modal.onDidDismiss(data =>{
           if(!data) return;
-          console.log(data, 'modal');
-          Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
-            let source = [position.coords.longitude, position.coords.latitude];
-            let feature = this.vbCollection.features.find(f=>f.properties.number == data);
-            let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
-            console.log(destination, 'desttt');
-            let subs = this.routeService.getData([source, destination]).subscribe(
-              routeData => {
-                console.log(routeData.json());
-                let route : IOSMRouteResponse = routeData.json().routes[0];
-                if(!route) return;
-                let feature = this.geojsonParser.readFeature(route.geometry);
-                this.routeLayer.getSource().clear();
-                this.routeLayer.getSource().refresh();
-                this.routeLayer.getSource().addFeature(feature);
-                subs.unsubscribe();
-                // Obtener la posición
-                this.map.on('postcompose', this.updateView.bind(this));
-                this.map.render();
-                this.locationService.startTracking(
-                  (position : Geoposition) =>{
-                    let pos = [position.coords.longitude, position.coords.latitude];
-                    let accuracy = position.coords.accuracy;
-                    let heading = position.coords.heading || 0;
-                    let speed = position.coords.speed || 0;
+          
+          Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+            if(!gpsEnabled){
+              Diagnostic.switchToLocationSettings();
+              return;
+            }
+
+            console.log(data, 'modal');
+            Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
+              let source = [position.coords.longitude, position.coords.latitude];
+              let feature = this.vbCollection.features.find(f=>f.properties.number == data);
+              let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
+              let subs = this.routeService.getData([source, destination]).subscribe(
+                routeData => {
+                  console.log(routeData.json());
+                  let route : IOSMRouteResponse = routeData.json().routes[0];
+                  if(!route) return;
+                  let feature = this.geojsonParser.readFeature(route.geometry, {
+                    dataProjection : `EPSG:4326`,
+                    featureProjection : this.map.getView().getProjection()
+                  });
+
+                  this.routeLayer.getSource().clear();
+                  this.routeLayer.getSource().refresh();
+                  this.routeLayer.getSource().addFeature(feature);
+                  subs.unsubscribe();
+                  // Obtener la posición
+                  this.map.on('postcompose', this.updateView.bind(this));
+                  this.map.render();
+                  this.olLocationListener = this.olGeolocation.on('change', event =>{
+                    let position = this.olGeolocation.getPosition();
+                    let accuracy = this.olGeolocation.getAccuracy();
+                    let heading = this.olGeolocation.getHeading() || 0;
+                    let speed = this.olGeolocation.getSpeed() || 0;
                     let m = Date.now();
 
-                    this.addPosition(pos, heading, m, speed);
+                    this.addPosition(position, heading, m, speed);
 
                     let coords = this.positions.getCoordinates();
                     let len = coords.length;
                     if (len >= 2) {
                       this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
                     }
-                  }
-                )
-              }
-            );
+                  })
+                  /*this.locationService.startTracking(
+                    (position : Geoposition) =>{
+                      let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
+                                  'EPSG:4326', this.map.getView().getProjection());
+                      let accuracy = position.coords.accuracy;
+                      let heading = position.coords.heading || 0;
+                      let speed = position.coords.speed || 0;
+                      let m = Date.now();
 
-          });
+                      this.addPosition(pos, heading, m, speed);
+
+                      let coords = this.positions.getCoordinates();
+                      let len = coords.length;
+                      if (len >= 2) {
+                        this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
+                      }
+                    }
+                  )*/
+                }
+              );
+
+            });
+          })
+          .catch( err => alert(err));
           // Avisarle al usuario de que escoja la posición inicial
           //this.routeService.getData([]);
         });
@@ -255,32 +294,22 @@ export class Page1 {
   }
 
   addVBFeatures(zoomTo){
-    let epsg = +this.vbCollection.crs.properties.name.match(/EPSG::\d+/)[0].replace('EPSG::', '');
+    //let epsg = +this.vbCollection.crs.properties.name.match(/EPSG::\d+/)[0].replace('EPSG::', '');
     //console.log(epsg)
-    let projSubs = this.projService.getProjDef(epsg).subscribe( projDef =>{
-      //console.log(projDef.text());
-      proj4.defs(`EPSG:${epsg}`, projDef.text());
+    let features = this.geojsonParser.readFeatures(this.vbCollection, {
+      dataProjection : 'EPSG:25830',
+      featureProjection : this.map.getView().getProjection()
+    });
 
-      console.log(projDef);
+    this.clusterSource.getSource().clear();
+    this.clusterSource.getSource().refresh();
+    this.clusterSource.getSource().addFeatures(features);
+    //this.clusterSource.setStyle(this.styleService.getStyle());
 
-      let features = this.geojsonParser.readFeatures(this.vbCollection, {
-        dataProjection : `EPSG:${epsg}`,
-        featureProjection : 'EPSG:4326'
-      });
-
-      this.clusterSource.getSource().clear();
-      this.clusterSource.getSource().refresh();
-      this.clusterSource.getSource().addFeatures(features);
-      //this.clusterSource.setStyle(this.styleService.getStyle());
-
-      if(zoomTo){
-        let bbox = ol.extent.boundingExtent(features.map( f => f.getGeometry().getCoordinates() ) );
-        this.map.getView().fit(bbox, this.map.getSize());
-      }
-      
-      projSubs.unsubscribe();
-
-    })
+    if(zoomTo){
+      let bbox = ol.extent.boundingExtent(features.map( f => f.getGeometry().getCoordinates() ) );
+      this.map.getView().fit(bbox, this.map.getSize());
+    }
   } 
 
   getPosition(){
@@ -289,9 +318,11 @@ export class Page1 {
       let feature = new ol.Feature({
         geometry : new ol.geom.Point([position.coords.longitude, position.coords.latitude])
       });
+      /*
       this.myLocationLayer.getSource().clear();
       this.myLocationLayer.getSource().refresh();
       this.myLocationLayer.getSource().addFeature(feature);
+      */
       this.map.getView().setCenter([position.coords.longitude, position.coords.latitude])
     })
   }
