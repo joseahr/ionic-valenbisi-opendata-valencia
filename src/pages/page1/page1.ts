@@ -1,14 +1,16 @@
 import { Component, ViewChild } from '@angular/core';
 import { LocalNotifications, Geolocation, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
-import { ModalController, NavController, Platform, Searchbar } from 'ionic-angular';
+import { ModalController, NavController, Platform, Searchbar, LoadingController } from 'ionic-angular';
 //import { Insomnia } from 'ionic-native';
 import { IVBCollection, INominatimResponse, IOSMRouteResponse } from '../../interfaces';
+
 import { EstacionesVBService } from '../../services/estaciones-valenbisi.service';
 import { ProjectionService } from '../../services/projection.service';
 import { StyleService } from '../../services/styles.service';
 import { LocationService } from '../../services/location.service';
 import { NominatimService } from '../../services/geocoder.service';
 import { OSMRouteService } from '../../services/routes.service';
+
 import { ModalPage } from '../modal/modal';
 
 declare const ol: any;
@@ -45,7 +47,7 @@ export class Page1 {
 
   searching : Boolean = false;
 
-  searchLayer : any;
+  //searchLayer : any;
   routeLayer : any;
   //myLocationLayer : any;
 
@@ -58,6 +60,7 @@ export class Page1 {
   constructor(
     public navCtrl: NavController, 
     public modalCtrl : ModalController,
+    public loadingCtrl : LoadingController,
     public vbService : EstacionesVBService,
     public projService : ProjectionService, 
     public styleService : StyleService,
@@ -82,13 +85,19 @@ export class Page1 {
 
     this.geojsonParser = new ol.format.GeoJSON();
 
-    this.searchLayer = new ol.layer.Vector({
-      source : new ol.source.Vector()
-    });
+    /*this.searchLayer = new ol.layer.Vector({
+      source : new ol.source.Vector(),
+      displayInLayerSwitcher : false
+    });*/
 
     this.routeLayer = new ol.layer.Vector({
       source : new ol.source.Vector(),
-      style  : this.styleService.getRouteStyle()
+      style  : this.styleService.getRouteStyle(),
+      displayInLayerSwitcher : false
+    });
+
+    const lysw = new ol.control.LayerSwitcher({
+      target : document.getElementById('lysw')
     });
 
     /*this.myLocationLayer = new ol.layer.Vector({
@@ -114,18 +123,46 @@ export class Page1 {
     });
 
 		this.clusterLayer = new ol.layer.AnimatedCluster({
-      name: 'Cluster',
+      name: 'Paradas de ValenBisi',
 			source: this.clusterSource,
 			animationDuration: 700,
-			style: this.styleService.getClusterStyle()
+			style: this.styleService.getClusterStyle(),
 		});
 
-    this.map = new ol.Map({
-      layers: [
+    const carrilesBiciLayer = new ol.layer.Tile({
+      name : 'Carriles Bici',
+      source : new ol.source.TileWMS({
+        url : 'http://mapas.valencia.es/lanzadera/opendata/Tra-carril-bici/wms',
+        params : {
+          "LAYERS" : 'TRA-CARRIL-BICI',
+          gutter   : 200
+        }
+      })
+    });
+
+    const baseLayers = new ol.layer.Group({
+      name : 'Capas Base',
+      layers : [
         new ol.layer.Tile({
+          name : 'Capa Base OSM',
           source: new ol.source.OSM()
-        })
-      ],
+        }),
+        new ol.layer.Tile({
+          name : 'Ortofoto PNOA',
+          visible : false,
+          source : new ol.source.TileWMS({
+            url : 'http://www.ign.es/wms-inspire/pnoa-ma',
+            params : {
+              "LAYERS" : 'OI.OrthoimageCoverage',
+              gutter   : 200
+            }
+          })
+        })   
+      ]
+    });
+
+    this.map = new ol.Map({
+      layers: [baseLayers],
       target: 'map',
       controls: ol.control.defaults(),
       view: new ol.View({
@@ -135,6 +172,7 @@ export class Page1 {
         zoom: 2
       })
     });
+    this.map.addControl(lysw);
     this.projService.setProjection(this.map, '25830');
 
     /*this.olGeolocation = new ol.Geolocation({
@@ -146,7 +184,9 @@ export class Page1 {
       }
     });*/
 
-    this.map.addLayer(this.searchLayer);
+    this.map.addLayer(carrilesBiciLayer);
+
+    //this.map.addLayer(this.searchLayer);
     this.map.addLayer(this.routeLayer);
     //this.map.addLayer(this.myLocationLayer);
     this.map.addLayer(this.clusterLayer);
@@ -179,13 +219,16 @@ export class Page1 {
             }
 
             console.log(data, 'modal');
+            let loading = this.loadingCtrl.create({ content : 'Obteniendo ruta, espere por favor.' });
+            loading.present();
             Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
               let source = [position.coords.longitude, position.coords.latitude];
               let feature = this.vbCollection.features.find(f=>f.properties.number == data);
               let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
               let subs = this.routeService.getData([source, destination]).subscribe(
                 routeData => {
-                  console.log(routeData.json());
+                  loading.dismiss();
+                  //console.log(routeData.json());
                   let route : IOSMRouteResponse = routeData.json().routes[0];
                   if(!route) return;
                   let feature = this.geojsonParser.readFeature(route.geometry, {
@@ -288,14 +331,14 @@ export class Page1 {
 
         let bbox = sinfo.boundingbox.map(Number);
         let [ymin, ymax, xmin, xmax] = bbox;
-        bbox = [xmin, ymin, xmax, ymax]
+        bbox = ol.proj.transformExtent([xmin, ymin, xmax, ymax], 'EPSG:4326', this.map.getView().getProjection());
 
         let feature = new ol.Feature({
           geometry : new ol.geom.Point([+sinfo.lon, +sinfo.lat])
         });
         console.log(sinfo, sinfo.display_name, sinfo.lon, sinfo.lat);
-        this.searchLayer.getSource().clear();
-        this.searchLayer.getSource().refresh();
+        //this.searchLayer.getSource().clear();
+        //this.searchLayer.getSource().refresh();
         //this.searchLayer.getSource().addFeature(feature);
 
         this.map.getView().setCenter([+sinfo.lon, +sinfo.lat]);

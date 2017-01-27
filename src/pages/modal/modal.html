@@ -5,7 +5,7 @@
     </ion-title>
     <ion-buttons start>
       <button ion-button (click)="dismiss()">
-        <span ion-text color="primary" showWhen="ios">Cancel</span>
+        <span ion-text color="primary" showWhen="ios">Cancelar</span>
         <ion-icon name="md-close" showWhen="android,windows"></ion-icon>
       </button>
     </ion-buttons>
@@ -13,9 +13,9 @@
 </ion-header>
 <ion-content>
   <ion-refresher (ionRefresh)="init($event)">
-    <ion-refresher-content></ion-refresher-content>
+    <ion-refresher-content pullingText="Arrastra para actualizar" refreshingText="Actualizando parada">></ion-refresher-content>
   </ion-refresher>
-  <button ion-button block outline (click)="dismiss(selectedVBProps.number)"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
+  <button ion-button full outline large=true (click)="dismiss(selectedVBProps.number)"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
   <ion-list>
       <ion-item>
         <ion-avatar item-left>
