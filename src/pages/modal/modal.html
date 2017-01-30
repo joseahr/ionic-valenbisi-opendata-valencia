@@ -15,16 +15,16 @@
   <ion-refresher (ionRefresh)="init($event)">
     <ion-refresher-content pullingText="Arrastra para actualizar" refreshingText="Actualizando parada">></ion-refresher-content>
   </ion-refresher>
-  <button ion-button full outline large=true (click)="dismiss(selectedVBProps.number)"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
   <ion-list>
       <ion-item>
         <ion-avatar item-left>
-          <ion-icon [hidden]="selectedVBProps.open !== 'T'" name="checkmark" color="primary" style="font-size : 3em;"></ion-icon>
-          <ion-icon [hidden]="selectedVBProps.open === 'T'" name="construct" color="danger" style="font-size : 3em;"></ion-icon>
+          <ion-icon item-left [hidden]="selectedVBProps.open !== 'T'" name="checkmark" color="primary" style="font-size : 3em;"></ion-icon>
+          <ion-icon item-left [hidden]="selectedVBProps.open === 'T'" name="construct" color="danger" style="font-size : 3em;"></ion-icon>
         </ion-avatar>
         <h2>{{selectedVBProps.name}}</h2>
         <p>{{selectedVBProps.address}}</p>
       </ion-item>
+      <button ion-button full outline large=true (click)="dismiss(selectedVBProps.number)"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
       <ion-item>
         <p style="font-weight : bold;"><ion-icon name="bicycle"></ion-icon> Bicis disponibles</p>
         <p>{{selectedVBProps.available}}/{{selectedVBProps.total}}</p>

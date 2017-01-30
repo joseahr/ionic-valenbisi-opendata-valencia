@@ -1,22 +1,33 @@
-import { Component, ViewChild } from '@angular/core';
+import { Component } from '@angular/core';
+// Plugins Nativos
 import { LocalNotifications, Geolocation, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
-import { ModalController, NavController, Platform, Searchbar, LoadingController } from 'ionic-angular';
+// Componentes Angular 2
+import { ModalController, NavController, Platform, LoadingController } from 'ionic-angular';
 //import { Insomnia } from 'ionic-native';
+// Interfaces
 import { IVBCollection, INominatimResponse, IOSMRouteResponse } from '../../interfaces';
-
+/* Servicios */
+// ValenBisiService - Obtener paradas de valenbisi
 import { EstacionesVBService } from '../../services/estaciones-valenbisi.service';
+// ProjectionService - Obtener Proyecciones
 import { ProjectionService } from '../../services/projection.service';
+// StyleService - Estilos OpenLayers 3
 import { StyleService } from '../../services/styles.service';
+// LocationService - Obtener la posición | Escuchar cambios de localización
 import { LocationService } from '../../services/location.service';
+// GeocoderService - Obtener coordenadas a partir de nombres de calles
 import { NominatimService } from '../../services/geocoder.service';
+// RouteService - Obtener ruta a partir de coordenadas
 import { OSMRouteService } from '../../services/routes.service';
-
+// ModalPage - Página modal para mostrar detalles de una parada de valenbisi
 import { ModalPage } from '../modal/modal';
 
+// Declaramos la variable ol - OpenLayers 3
 declare const ol: any;
+// Declaramos la variable proj4 - Proj4.js
 declare const proj4: any;
 
-
+// Componente de Angular 2 - Página principal
 @Component({
   selector: 'page-page1',
   templateUrl: 'page1.html',
@@ -29,33 +40,48 @@ declare const proj4: any;
               ]
 })
 export class Page1 {
-
-  @ViewChild('sb') searchBar : Searchbar;
-
+  // OpenLayers 3
   ol : any;
+  // Mapa de OpenLayers 3
   map : any;
+  // Parser de GeoJSON de OpenLayers 3
   geojsonParser : any;
+  // Variable proj4 
   proj4 : any;
   //olGeolocation : any;
   //olLocationListener : any;
 
+  // Capa de estaciones Valenbisi
   layerVB : any;
+  // Source que almacena los cluster de estaciones ValenBisi
   clusterSource : any;
+  // Capa de cluster de estaciones ValenBisi
   clusterLayer : any;
-
+  // Lista de estaciones ValenBisi
   vbCollection : IVBCollection;
 
-  searching : Boolean = false;
+  // Almacenará los últimos estados de la estación seleccionada
+  // cuando estemos yendo hacia ella
+  selectedVBStates : any[] = [];
 
-  //searchLayer : any;
+  // Estado que describe si se está navegando hacia una ruta o no
+  navigating : Boolean = false;
+  // Capa que almacena la ruta a la que se está yendo
   routeLayer : any;
-  //myLocationLayer : any;
 
+  /* Parámetros de navegación */
+  // Lista que almacena las últimas 20 posiciones
   positions : any;
+  // Fecha de la última coordenada obtenida
   previousM : number = 0;
+  // Marcador de Openlayers 3 - Overlay
   marker : any;
+  // Marcador OL3 - Elemento HTML5
   markerEl : any;
   deltaMean : number = 500; // the geolocation sampling period mean in ms
+  mapViewChange : any;
+
+  watchCoordinates : any;
 
   constructor(
     public navCtrl: NavController, 
@@ -68,20 +94,9 @@ export class Page1 {
     public nominatimService : NominatimService,
     public routeService : OSMRouteService,
     public platform : Platform
-  ) {
-
-    /*this.locationService.startTracking( (location, mode)=>{
-      LocalNotifications.schedule({
-        id: 1,
-        text: mode + '',
-      });
-    });*/
-        
-  }
+  ) {}
 
   ngOnInit() : void {
-
-    //setInterval( ()=>{ this.searching = !this.searching }, 3000);
 
     this.geojsonParser = new ol.format.GeoJSON();
 
@@ -129,6 +144,7 @@ export class Page1 {
 			style: this.styleService.getClusterStyle(),
 		});
 
+    // Capa WMS de los carriles bici y calles ciclables
     const carrilesBiciLayer = new ol.layer.Tile({
       name : 'Carriles Bici',
       source : new ol.source.TileWMS({
@@ -140,6 +156,7 @@ export class Page1 {
       })
     });
 
+    // Grupo de capas que almacena las capas Base - OSM y Orto PNOA
     const baseLayers = new ol.layer.Group({
       name : 'Capas Base',
       layers : [
@@ -161,275 +178,332 @@ export class Page1 {
       ]
     });
 
+    // Creamos el mapa
     this.map = new ol.Map({
       layers: [baseLayers],
       target: 'map',
       controls: ol.control.defaults(),
       view: new ol.View({
-        projection : 'EPSG:4326',
+        projection : 'EPSG:4326', // La proyección la cambiamos enseguida
         maxZoom : 20,
         center: [0, 0],
         zoom: 2
       })
     });
+    // Añadimos control de Capas
     this.map.addControl(lysw);
+    // Cambiamos a la proyección ETRS89 UTM H30
     this.projService.setProjection(this.map, '25830');
-
-    /*this.olGeolocation = new ol.Geolocation({
-      projection: this.map.getView().getProjection(),
-      trackingOptions: {
-        maximumAge: 10000,
-        enableHighAccuracy: true,
-        timeout: 600000
-      }
-    });*/
-
+    
+    //Añadimos capa WMS de carriles bici
     this.map.addLayer(carrilesBiciLayer);
-
-    //this.map.addLayer(this.searchLayer);
+    // Añadimos capa de ruta
     this.map.addLayer(this.routeLayer);
-    //this.map.addLayer(this.myLocationLayer);
+    // Añadimos capa de estaciones valenbisi (Clúster)
     this.map.addLayer(this.clusterLayer);
-
+    // Añadimos el marcados Overlay OL3
     this.map.addOverlay(this.marker);
-
+    // Quitamos la atribución
     this.hideAttribution();
 
+    // Evento click del mapa - Buscaremos estaciones(Clúster de estaciones) cerca del click
     this.map.on('click', event =>{
       if(event.dragging) return;
-      if(!this.map.hasFeatureAtPixel(event.pixel, { hitTolerance : 20 })) return;
+      // Comprobamos que hay features en el pixel clicado - Tolerancia 20m
+      if(!this.map.hasFeatureAtPixel(event.pixel, 
+        { hitTolerance : 20 , layerFilter : l => l.get('name') == 'Paradas de ValenBisi' })
+      ) return;
+      // Coordenada clicada
       let coo = event.coordinate;
+      // Elemento más próximo 
       let closest = this.clusterSource.getClosestFeatureToCoordinate(coo);
-      console.log('closest ->', closest);
+      //console.log('closest ->', closest);
+      // Features del elemento clicado
       let features = closest.get('features');
-     
+      
+      // Si solo hay una feature
       if(features.length == 1){
+        // Mostramos los detalles de la estación
         let modal = this.modalCtrl.create(ModalPage, { properties : features[0].values_ });
+        // Escuchamos el evento para cuando se cierre el modal
         modal.onDidDismiss(data =>{
+          // Si no se ha clicado sobre "Ir a la parada" no habrá datos
+          // de lo contrario devolverá el número de la parada seleccionada
           if(!data) return;
-          
+          // Comprobamos si el usuario tiene activada la localización
           Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+            // Si no está activada
             if(!gpsEnabled){
+              // Mostramos un diálogo de confirmación para que el usuario active la localización
               Dialogs
               .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
               .then(dialogNumber =>{
+                // Si ha clicado en aceptar, abrimos las opciones de localización del dispositivo
                 if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
               });
+              // El usuario deberá volver a clicar sobre la parada :/
               return;
             }
-
-            console.log(data, 'modal');
+            //console.log(data, 'modal');
+            // En caso de que ya estén las opciones de localización activadas
+            // mostramos el mensaje de espera, hasta que se obtenga y se muestre la ruta
             let loading = this.loadingCtrl.create({ content : 'Obteniendo ruta, espere por favor.' });
             loading.present();
-            Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
+
+            // Obtenemos en primer lugar la posición del usuario
+            let getSourceCoordinates = this.locationService.startTracking().subscribe( (position : Geoposition)=>{
+              // Si la precisión es mala seguimos buscando el primer punto
+
+              if(position.coords.accuracy > 15) return;
+              getSourceCoordinates.unsubscribe();
+              // Localización del usuario
               let source = [position.coords.longitude, position.coords.latitude];
+              // Buscamos la feature de la parada seleccionada
               let feature = this.vbCollection.features.find(f=>f.properties.number == data);
+              // Obtenemos las coordenadas tranformadas a EPSG:4326 de la parada seleccionada
               let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
-              let subs = this.routeService.getData([source, destination]).subscribe(
+              // Nos subscibimos al observable que nos proporciona la ruta entre los dos puntos
+              let getRouteData = this.routeService.getData([source, destination]).subscribe(
+                // Cuando haya ruta
                 routeData => {
+                  // Cerramos el diálogo
+                  getRouteData.unsubscribe();
                   loading.dismiss();
                   //console.log(routeData.json());
+                  // Obtenemos una de las rutas que nos devuelve el servicio
                   let route : IOSMRouteResponse = routeData.json().routes[0];
-                  if(!route) return;
+                  if(!route) return; // Si no hay ruta , "pues ná"
+                  // Obtenemos la ruta en la proyección en la que esté el mapa
                   let feature = this.geojsonParser.readFeature(route.geometry, {
                     dataProjection : `EPSG:4326`,
                     featureProjection : this.map.getView().getProjection()
                   });
 
+                  // Limpiamos la capa de rutas
                   this.routeLayer.getSource().clear();
                   this.routeLayer.getSource().refresh();
+                  // Añadimos la ruta a la capa de rutas
                   this.routeLayer.getSource().addFeature(feature);
-                  subs.unsubscribe();
-                  // Obtener la posición
-                  this.map.on('postcompose', this.updateView.bind(this));
+                  // Cuando el evento de renderizado del mapa pase al siguiente tick
+                  // actualizamos la View del mapa
+                  this.mapViewChange = this.map.on('postcompose', this.updateView.bind(this));
                   this.map.render();
-                  /*this.olLocationListener = this.olGeolocation.on('change', event =>{
-                    let position = this.olGeolocation.getPosition();
-                    let accuracy = this.olGeolocation.getAccuracy();
-                    let heading = this.olGeolocation.getHeading() || 0;
-                    let speed = this.olGeolocation.getSpeed() || 0;
-                    let m = Date.now();
+                  // Escuchamos al Evento para obtener coordenadas 
 
-                    this.addPosition(position, heading, m, speed);
-
-                    let coords = this.positions.getCoordinates();
-                    let len = coords.length;
-                    if (len >= 2) {
-                      this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
-                    }
-                  })*/
-                  this.locationService.startTracking(
-                    (position : Geoposition) =>{
-                      //alert(position.coords.heading);
+                  this.watchCoordinates = this.locationService.startTracking()
+                    .subscribe( (position : Geoposition) =>{
+                      this.navigating = true;
+                      // Obtenemos la posición en la proyección del mapa
                       let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
                                   'EPSG:4326', this.map.getView().getProjection());
-                      let accuracy = position.coords.accuracy;
+                      // Precisión del punto obtenido
+                      //let accuracy = position.coords.accuracy;
+                      // Azimut en grados
                       let heading = position.coords.heading || 0;
+                      // Velocidad en m/s
                       let speed = position.coords.speed || 0;
+                      // Fecha en la que se obtiene la posición
                       let m = Date.now();
-
+                      // Dibujamos la posición
                       this.addPosition(pos, heading, m, speed);
-
+                      // Coordenadas que se han ido obteniendo
+                      this.notifyChanges(feature);
                       let coords = this.positions.getCoordinates();
+                      // Cuántas coordenadas se han obtenido
                       let len = coords.length;
+                      // si se han obtenido más de dos
                       if (len >= 2) {
+                        // El nuevo intervalo se el tiempo entre las dos últimas posiciones
                         this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
                       }
-                    }
+                    }, 
+                    err => alert(err)
                   );
-                }
+                },
+                err => alert(err)
               );
-
-            });
+            },
+            err => alert(err));
           })
           .catch( err => alert(err));
-          // Avisarle al usuario de que escoja la posición inicial
-          //this.routeService.getData([]);
         });
         modal.present();
       }
+      // Si hay más de una estación
       else if(features.length > 1){
+        // Obtenemos el bounding box que envuelve a todos los puntos
         let bbox = ol.extent.boundingExtent( features.map( f => f.getGeometry().getCoordinates() ) );
+        // Actualizamos la View del mapa
         this.map.getView().fit(bbox, this.map.getSize(), { duration : 500 })
       }
     });
 
+    // Nos suscribimos al evento para obtener estaciones ValenBisi
+    // Hará una petición cada 60 segundos
     this.vbService.getData()
     //.take(1)
     .subscribe(
+      // Cuando haya nuevos datos
       data => {
-        console.log('Actualizando VB')
+        console.log('Actualizando VB');
+        // Si es la primera vez hacemos zoom sobre las features
         let zoomToFeatures = this.vbCollection ? false : true;
+        // Actualizamos la variable vbCollection
         this.vbCollection = data.json();
+        // Añadimos la estaciones ValenBisi al mapa
         this.addVBFeatures(zoomToFeatures);
       }
     );
 
   }
 
+  // Método para cerrar la atribución del mapa de OL3
   hideAttribution(){
+    // Recorremos los controles del mapa
     this.map.getControls().forEach(c => {
+      // Si el control es de la clase ol.control.Attribution
       if (c instanceof ol.control.Attribution){
+        // Eliminamos el control
         this.map.removeControl(c);
       }
     })
   }
 
+  // Método para mostrar el modal de detalle de la estación VB seleccionada
   presentModal(){
-    console.log('modal');
+    // Creamos el modal
     let modal = this.modalCtrl.create(ModalPage);
+    // Lo mostramos
     modal.present();
   }
 
+  // Método para obetener y hacer zoom sobre la calle buscada
   searchAddress(event){
     console.log('searching...');
+    // Si se han escrito menos de 3 letras no hacemos nada
     if(event.target.value.length < 3) return;
+    // Suscripción al evento para obtener posición a partir de nombre de calle
     this.nominatimService.getData(event.target.value).subscribe(
+      // Cuando obtengamos información
       streetInfo => {
+        // Obtenemos la primera ocurrencia
         let sinfo : INominatimResponse = streetInfo.json()[0];
+        // Si no hay dato - Salimos de la función
         if(!sinfo) return;
 
+        // Obtenemos el bounding box de la calle
         let bbox = sinfo.boundingbox.map(Number);
+        // En el formato de OpenLayers
         let [ymin, ymax, xmin, xmax] = bbox;
+        // Tranformamos las coordenadas del bbox a la proyección del mapa
         bbox = ol.proj.transformExtent([xmin, ymin, xmax, ymax], 'EPSG:4326', this.map.getView().getProjection());
 
-        let feature = new ol.Feature({
-          geometry : new ol.geom.Point([+sinfo.lon, +sinfo.lat])
-        });
         console.log(sinfo, sinfo.display_name, sinfo.lon, sinfo.lat);
-        //this.searchLayer.getSource().clear();
-        //this.searchLayer.getSource().refresh();
-        //this.searchLayer.getSource().addFeature(feature);
-
+        // Hacemos zoom al bounding box
         this.map.getView().setCenter([+sinfo.lon, +sinfo.lat]);
         this.map.getView().fit(bbox, this.map.getSize(), { duration : 1000 });
       }
     )
   }
 
+  // Método para añadir las paradas VB al mapa
   addVBFeatures(zoomTo){
     //let epsg = +this.vbCollection.crs.properties.name.match(/EPSG::\d+/)[0].replace('EPSG::', '');
-    //console.log(epsg)
+    //console.log(epsg);
+    // Obtenemos la feature en la proyección del mapa
     let features = this.geojsonParser.readFeatures(this.vbCollection, {
       dataProjection : 'EPSG:25830',
       featureProjection : this.map.getView().getProjection()
     });
 
+    // Limpiamos la capa de Estaciones VB
     this.clusterSource.getSource().clear();
     this.clusterSource.getSource().refresh();
+    // Añadimos las estaciones VB
     this.clusterSource.getSource().addFeatures(features);
-    //this.clusterSource.setStyle(this.styleService.getStyle());
 
+    // Si es la primera vez zoomTo será true
     if(zoomTo){
+      // Hacemos zoom a las features (Clúster)
       let bbox = ol.extent.boundingExtent(features.map( f => f.getGeometry().getCoordinates() ) );
       this.map.getView().fit(bbox, this.map.getSize());
     }
   } 
 
+  // Método para obtener posición Actual y hacer zoom en el mapa
   getPosition(){
+    // Comprobar si la localización está activada
     Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+      // Si la localización no está activa
       if(!gpsEnabled){
+        // Mostramos dialogo para que confirme que quiere cambiar el estado de la localización
         Dialogs
         .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
         .then(dialogNumber =>{
+          // Si acepta mostramos las opciones de localización del dispositivo
           if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
         });
+        // El usuario tendrá que volver a volver a a darle al botón :/
         return;
       }
 
+      // Obtenemos la posición actual del usuario
       Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
-        console.log('ppppppppp', position);
-        let feature = new ol.Feature({
-          geometry : new ol.geom.Point([position.coords.longitude, position.coords.latitude])
-        });
-        /*
-        this.myLocationLayer.getSource().clear();
-        this.myLocationLayer.getSource().refresh();
-        this.myLocationLayer.getSource().addFeature(feature);
-        */
+        // Ponemos el centro del mapa sobre la posición del usuario
         this.map.getView().setCenter([position.coords.longitude, position.coords.latitude])
       })
     });
   }
 
-  // convert radians to degrees
+  // Radianes a grados
   radToDeg(rad) {
     return rad * 360 / (Math.PI * 2);
   }
-  // convert degrees to radians
+
+  // Grados a radianes
   degToRad(deg) {
     return deg * Math.PI * 2 / 360;
   }
-  // modulo for negative values
+
+  // Módulo
   mod(n) {
     return ((n % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI);
   }
 
+  // Método para añadir la posición (modo : Watch) del usuario
   addPosition(position, heading, m, speed) {
-    console.log('heading', heading);
+    // Pasamos el azimut a radianes
     heading = this.degToRad(heading);
-    let x = position[0];
-    let y = position[1];
-
+    // Coordenadas X, Y actuales
+    let [x, y] = position;
+    // Coordenadas que se han ido almacenando
     let fCoords = this.positions.getCoordinates();
+    // Última coordenada almacenada
     let previous = fCoords[fCoords.length - 1];
+    // Último azimut almacenado
     let prevHeading = previous && previous[2];
+    // Si hay último azimut
     if (prevHeading) {
+      // Obtenemos Incremento de Azimut
       let headingDiff = heading - this.mod(prevHeading);
 
-      // force the rotation change to be less than 180�
+      // Forzamos a que el cambio sea menor a 180º
       if (Math.abs(headingDiff) > Math.PI) {
+        // Signo
         let sign = (headingDiff >= 0) ? 1 : -1;
+        // diff = +-(180 - diff)
         headingDiff = -sign * (2 * Math.PI - Math.abs(headingDiff));
       }
+      // Nuevo acimut
       heading = prevHeading + headingDiff;
     }
+    // Añadimos nueva Vista del mapa y posición
     this.positions.appendCoordinate([x, y, heading, m]);
 
-    // only keep the 20 last coordinates
+    // Solo se alamacenarán las últimas 20 coordenadas
     this.positions.setCoordinates(this.positions.getCoordinates().slice(-20));
 
-    // FIXME use speed instead
+    // Utilizamos el marcador correcto en cada caso
     if (heading && speed) {
       this.markerEl.src = 'assets/icon/images/geolocation_marker_heading.png';
     } else {
@@ -437,10 +511,11 @@ export class Page1 {
     }
   }
 
-  // recenters the view by putting the given coordinates at 3/4 from the top or
-  // the screen
+  // Recentrar la View poniendo las coordenadas a 3/4 de la pantalla desde la parte superior
   getCenterWithHeading(position, rotation, resolution) {
+    // Tamaño en píxels del mapa
     let size = this.map.getSize();
+    // Altura del mapa
     let height = size[1];
 
     return [
@@ -449,6 +524,7 @@ export class Page1 {
     ];
   }
 
+  // Método para actualizar la View del Mapa
   updateView() {
     // use sampling period to get a smooth transition
     let m = Date.now() - this.deltaMean * 1.5;
@@ -461,6 +537,47 @@ export class Page1 {
       this.map.getView().setRotation(-c[2]);
       this.marker.setPosition(c);
     }
+  }
+
+  stopRoute(){
+    this.navigating = false;
+    this.watchCoordinates.unsubscribe();
+    this.map.unByKey(this.mapViewChange);
+    this.selectedVBStates = [];
+    this.marker.setPosition(undefined);
+    this.routeLayer.getSource().clear();
+    this.routeLayer.getSource().refresh();
+  }
+
+  notifyChanges(vbFeature){
+    if(this.selectedVBStates.length == 0){
+      this.selectedVBStates.push({ date : new Date(), feature : vbFeature });
+      return;
+    }
+    let now      = new Date();
+    let lastDate : Date = this.selectedVBStates[this.selectedVBStates.length - 1].date;
+    let lastState = this.selectedVBStates[this.selectedVBStates.length - 1].feature;
+    if(now.getTime() - lastDate.getTime() < 60000) return;
+
+    this.selectedVBStates.push({ date : now, feature : vbFeature });
+    this.selectedVBStates = this.selectedVBStates.slice(-2);
+
+    let changes = {};
+    if(vbFeature.values_.free != lastState.values_.free){
+      changes['bornes'] = true;
+    }
+    if(vbFeature.values_.available != lastState.values_.available){
+      changes['bikes'] = true;
+    }
+
+    if(!Object.keys(changes).length) return;
+
+    LocalNotifications.schedule({
+      id : 1,
+      text: `Cambios en la parada #${vbFeature.properties.number}
+            Bicis libres : ${vbFeature.properties.available}/${vbFeature.properties.total}
+            Bornes libres :  ${vbFeature.properties.free}/${vbFeature.properties.total}`
+    });
   }
 
 }

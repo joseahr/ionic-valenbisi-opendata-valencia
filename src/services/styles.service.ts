@@ -6,9 +6,7 @@ export class StyleService {
 
     cacheStyleCluster = {};
 
-    constructor(){
-
-    }
+    constructor(){}
 
     getRouteStyle(){
         return new ol.style.Style({
@@ -31,7 +29,7 @@ export class StyleService {
 
     getClusterStyle (){
 		return (feature, resolution)=>{
-            let size = feature.get('features').length;
+            //let size = feature.get('features').length;
 
             let availableBikes = 0;
             let totalBikes = 0;
