@@ -24,7 +24,7 @@
         <h2>{{selectedVBProps.name}}</h2>
         <p>{{selectedVBProps.address}}</p>
       </ion-item>
-      <button ion-button full outline large=true (click)="dismiss(selectedVBProps.number)"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
+      <button ion-button full outline large=true (click)="checkGPSAndDismiss()"><ion-icon name="navigate"></ion-icon> <span style="margin-left : 10px;">Ir a la parada</span></button>
       <ion-item>
         <p style="font-weight : bold;"><ion-icon name="bicycle"></ion-icon> Bicis disponibles</p>
         <p>{{selectedVBProps.available}}/{{selectedVBProps.total}}</p>

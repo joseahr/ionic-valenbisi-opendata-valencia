@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { Diagnostic, Dialogs } from 'ionic-native';
 import { NavParams, ViewController } from 'ionic-angular';
 import { EstacionesVBService } from '../../services/estaciones-valenbisi.service';
 
@@ -42,6 +43,25 @@ export class ModalPage {
 
   dismiss(params){
     this.viewCtrl.dismiss(params)
+  }
+
+  checkGPSAndDismiss(){
+    Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+      // Si no está activada
+      if(!gpsEnabled){
+        // Mostramos un diálogo de confirmación para que el usuario active la localización
+        Dialogs
+        .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
+        .then(dialogNumber =>{
+          // Si ha clicado en aceptar, abrimos las opciones de localización del dispositivo
+          if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
+        })
+        .catch( err => alert(err));
+        return;
+      }
+      this.dismiss(this.selectedVBProps.number);
+
+    })
   }
 
 }

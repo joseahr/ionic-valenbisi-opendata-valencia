@@ -44,6 +44,8 @@ export class Page1 {
   ol : any;
   // Mapa de OpenLayers 3
   map : any;
+  // Esfera WGS84
+  wgs84Sphere : any;
   // Parser de GeoJSON de OpenLayers 3
   geojsonParser : any;
   // Variable proj4 
@@ -97,6 +99,8 @@ export class Page1 {
   ) {}
 
   ngOnInit() : void {
+
+    this.wgs84Sphere = new ol.Sphere(6378137);
 
     this.geojsonParser = new ol.format.GeoJSON();
 
@@ -209,10 +213,12 @@ export class Page1 {
     // Evento click del mapa - Buscaremos estaciones(Clúster de estaciones) cerca del click
     this.map.on('click', event =>{
       if(event.dragging) return;
+      if(this.navigating) return;
       // Comprobamos que hay features en el pixel clicado - Tolerancia 20m
       if(!this.map.hasFeatureAtPixel(event.pixel, 
         { hitTolerance : 20 , layerFilter : l => l.get('name') == 'Paradas de ValenBisi' })
       ) return;
+      
       // Coordenada clicada
       let coo = event.coordinate;
       // Elemento más próximo 
@@ -230,102 +236,87 @@ export class Page1 {
           // Si no se ha clicado sobre "Ir a la parada" no habrá datos
           // de lo contrario devolverá el número de la parada seleccionada
           if(!data) return;
-          // Comprobamos si el usuario tiene activada la localización
-          Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
-            // Si no está activada
-            if(!gpsEnabled){
-              // Mostramos un diálogo de confirmación para que el usuario active la localización
-              Dialogs
-              .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
-              .then(dialogNumber =>{
-                // Si ha clicado en aceptar, abrimos las opciones de localización del dispositivo
-                if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
-              });
-              // El usuario deberá volver a clicar sobre la parada :/
-              return;
-            }
-            //console.log(data, 'modal');
-            // En caso de que ya estén las opciones de localización activadas
-            // mostramos el mensaje de espera, hasta que se obtenga y se muestre la ruta
-            let loading = this.loadingCtrl.create({ content : 'Obteniendo ruta, espere por favor.' });
-            loading.present();
 
-            // Obtenemos en primer lugar la posición del usuario
-            let getSourceCoordinates = this.locationService.startTracking().subscribe( (position : Geoposition)=>{
-              // Si la precisión es mala seguimos buscando el primer punto
+          let loading = this.loadingCtrl.create({ content : 'Obteniendo ruta, espere por favor.' });
+          loading.present();
 
-              if(position.coords.accuracy > 15) return;
-              getSourceCoordinates.unsubscribe();
-              // Localización del usuario
-              let source = [position.coords.longitude, position.coords.latitude];
-              // Buscamos la feature de la parada seleccionada
-              let feature = this.vbCollection.features.find(f=>f.properties.number == data);
-              // Obtenemos las coordenadas tranformadas a EPSG:4326 de la parada seleccionada
-              let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
-              // Nos subscibimos al observable que nos proporciona la ruta entre los dos puntos
-              let getRouteData = this.routeService.getData([source, destination]).subscribe(
-                // Cuando haya ruta
-                routeData => {
-                  // Cerramos el diálogo
-                  getRouteData.unsubscribe();
-                  loading.dismiss();
-                  //console.log(routeData.json());
-                  // Obtenemos una de las rutas que nos devuelve el servicio
-                  let route : IOSMRouteResponse = routeData.json().routes[0];
-                  if(!route) return; // Si no hay ruta , "pues ná"
-                  // Obtenemos la ruta en la proyección en la que esté el mapa
-                  let feature = this.geojsonParser.readFeature(route.geometry, {
-                    dataProjection : `EPSG:4326`,
-                    featureProjection : this.map.getView().getProjection()
-                  });
+          // Obtenemos en primer lugar la posición del usuario
+          let getSourceCoordinates = 
+          this.locationService
+          .startTracking()
+          .subscribe( (position : Geoposition)=>{
+            // Si la precisión es mala seguimos buscando el primer punto
 
-                  // Limpiamos la capa de rutas
-                  this.routeLayer.getSource().clear();
-                  this.routeLayer.getSource().refresh();
-                  // Añadimos la ruta a la capa de rutas
-                  this.routeLayer.getSource().addFeature(feature);
-                  // Cuando el evento de renderizado del mapa pase al siguiente tick
-                  // actualizamos la View del mapa
-                  this.mapViewChange = this.map.on('postcompose', this.updateView.bind(this));
-                  this.map.render();
-                  // Escuchamos al Evento para obtener coordenadas 
+            if(position.coords.accuracy > 15) return;
+            getSourceCoordinates.unsubscribe();
+            // Localización del usuario
+            let source = [position.coords.longitude, position.coords.latitude];
+            // Buscamos la feature de la parada seleccionada
+            let feature = this.vbCollection.features.find(f=>f.properties.number == data);
+            // Obtenemos las coordenadas tranformadas a EPSG:4326 de la parada seleccionada
+            let destination = ol.proj.transform(feature.geometry.coordinates, 'EPSG:25830', 'EPSG:4326');
+            // Nos subscibimos al observable que nos proporciona la ruta entre los dos puntos
+            let getRouteData = this.routeService.getData([source, destination]).subscribe(
+              // Cuando haya ruta
+              routeData => {
+                // Cerramos el diálogo
+                getRouteData.unsubscribe();
+                loading.dismiss();
+                //console.log(routeData.json());
+                // Obtenemos una de las rutas que nos devuelve el servicio
+                let route : IOSMRouteResponse = routeData.json().routes[0];
+                if(!route) return; // Si no hay ruta , "pues ná"
+                // Obtenemos la ruta en la proyección en la que esté el mapa
+                let feature = this.geojsonParser.readFeature(route.geometry, {
+                  dataProjection : `EPSG:4326`,
+                  featureProjection : this.map.getView().getProjection()
+                });
 
-                  this.watchCoordinates = this.locationService.startTracking()
-                    .subscribe( (position : Geoposition) =>{
-                      this.navigating = true;
-                      // Obtenemos la posición en la proyección del mapa
-                      let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
-                                  'EPSG:4326', this.map.getView().getProjection());
-                      // Precisión del punto obtenido
-                      //let accuracy = position.coords.accuracy;
-                      // Azimut en grados
-                      let heading = position.coords.heading || 0;
-                      // Velocidad en m/s
-                      let speed = position.coords.speed || 0;
-                      // Fecha en la que se obtiene la posición
-                      let m = Date.now();
-                      // Dibujamos la posición
-                      this.addPosition(pos, heading, m, speed);
-                      // Coordenadas que se han ido obteniendo
-                      this.notifyChanges(feature);
-                      let coords = this.positions.getCoordinates();
-                      // Cuántas coordenadas se han obtenido
-                      let len = coords.length;
-                      // si se han obtenido más de dos
-                      if (len >= 2) {
-                        // El nuevo intervalo se el tiempo entre las dos últimas posiciones
-                        this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
-                      }
-                    }, 
-                    err => alert(err)
-                  );
-                },
-                err => alert(err)
-              );
-            },
-            err => alert(err));
-          })
-          .catch( err => alert(err));
+                // Limpiamos la capa de rutas
+                this.routeLayer.getSource().clear();
+                this.routeLayer.getSource().refresh();
+                // Añadimos la ruta a la capa de rutas
+                this.routeLayer.getSource().addFeature(feature);
+                // Cuando el evento de renderizado del mapa pase al siguiente tick
+                // actualizamos la View del mapa
+                this.mapViewChange = this.map.on('postcompose', this.updateView.bind(this));
+                this.map.render();
+                // Escuchamos al Evento para obtener coordenadas 
+
+                this.watchCoordinates = this.locationService.startTracking()
+                  .subscribe( (position : Geoposition) =>{
+                    this.navigating = true;
+                    // Obtenemos la posición en la proyección del mapa
+                    let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
+                                'EPSG:4326', this.map.getView().getProjection());
+                    // Precisión del punto obtenido
+                    //let accuracy = position.coords.accuracy;
+                    // Azimut en grados
+                    let heading = position.coords.heading || 0;
+                    // Velocidad en m/s
+                    let speed = position.coords.speed || 0;
+                    // Fecha en la que se obtiene la posición
+                    let m = Date.now();
+                    // Dibujamos la posición
+                    this.addPosition(pos, heading, m, speed);
+                    // Coordenadas que se han ido obteniendo
+                    this.notifyChanges(feature);
+                    let coords = this.positions.getCoordinates();
+                    // Cuántas coordenadas se han obtenido
+                    let len = coords.length;
+                    // si se han obtenido más de dos
+                    if (len >= 2) {
+                      // El nuevo intervalo se el tiempo entre las dos últimas posiciones
+                      this.deltaMean = (coords[len - 1][3] - coords[0][3]) / (len - 1);
+                    }
+                  }, 
+                  err => alert(err)
+                );
+              },
+              err => alert(err)
+            );
+          },
+          err => alert(err));
         });
         modal.present();
       }
@@ -472,10 +463,34 @@ export class Page1 {
 
   // Método para añadir la posición (modo : Watch) del usuario
   addPosition(position, heading, m, speed) {
-    // Pasamos el azimut a radianes
-    heading = this.degToRad(heading);
     // Coordenadas X, Y actuales
     let [x, y] = position;
+    // Centramos la posición sobre la ruta si estamos cerca
+    let route = this.routeLayer.getSource().getFeatures()[0];
+    let closestPointToRoute = route.getClosestPoint(position);
+    if(this.wgs84Sphere.haversineDistance(position, closestPointToRoute) < 15){
+      position = closestPointToRoute;
+      [x , y] = closestPointToRoute;
+      let newRoute = [];
+      let continue_ = false;
+      let routeCoords = route.getGeometry().getCoordinates();
+      routeCoords.reduce( (a, b)=>{
+        let geom = new ol.geom.LineString([a, b]);
+        // [minx, miny, maxx, maxy]
+        if(geom.intersectsExtent([x - 0.001, y - 0.001, x + 0.001, y + 0.001])){
+          newRoute.push([x, y], b);
+          continue_ = true;
+        } else if(continue_){
+          newRoute.push(b);
+        }
+      });
+      let feature = new ol.Feature({ geometry : new ol.geom.LineString(newRoute) });
+      this.routeLayer.getSource().clear();
+      this.routeLayer.getSource().refresh();
+      this.routeLayer.getSource().addFeature(feature);
+    }
+    // Pasamos el azimut a radianes
+    heading = this.degToRad(heading);
     // Coordenadas que se han ido almacenando
     let fCoords = this.positions.getCoordinates();
     // Última coordenada almacenada
