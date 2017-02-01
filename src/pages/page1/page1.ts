@@ -69,6 +69,9 @@ export class Page1 {
 
   // Estado que describe si se está navegando hacia una ruta o no
   navigating : Boolean = false;
+  recalculatingRoute : Boolean = false;
+  lastRecalculatingTime : Date;
+  lastRecalculatingPosition : Array<any>;
   // Capa que almacena la ruta a la que se está yendo
   routeLayer : any;
 
@@ -291,7 +294,7 @@ export class Page1 {
                     let pos = ol.proj.transform([position.coords.longitude, position.coords.latitude], 
                                 'EPSG:4326', this.map.getView().getProjection());
                     // Precisión del punto obtenido
-                    //let accuracy = position.coords.accuracy;
+                    let accuracy = position.coords.accuracy;
                     // Azimut en grados
                     let heading = position.coords.heading || 0;
                     // Velocidad en m/s
@@ -299,7 +302,7 @@ export class Page1 {
                     // Fecha en la que se obtiene la posición
                     let m = Date.now();
                     // Dibujamos la posición
-                    this.addPosition(pos, heading, m, speed);
+                    this.addPosition(pos, heading, m, speed, accuracy);
                     // Coordenadas que se han ido obteniendo
                     this.notifyChanges(feature);
                     let coords = this.positions.getCoordinates();
@@ -468,23 +471,73 @@ export class Page1 {
   }
 
   // Método para añadir la posición (modo : Watch) del usuario
-  addPosition(position, heading, m, speed) {
+  addPosition(position, heading, m, speed, accuracy) {
     try {
       // Coordenadas X, Y actuales
       let [x, y] = position;
       // Centramos la posición sobre la ruta si estamos cerca
       let route = this.routeLayer.getSource().getFeatures()[0].getGeometry();
+      
       let closestPointToRoute = route.getClosestPoint(position);
-      /*alert(this.wgs84Sphere.haversineDistance(
-            ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
-          , ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326')
-      ));*/
-      //alert(position);
-      //alert(closestPointToRoute);
-      if(this.wgs84Sphere.haversineDistance(
-            ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
-          , ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326')
-      ) < 5){
+      let firstRoutePoint = route.getCoordinates()[0];
+
+      let distance = this.wgs84Sphere.haversineDistance(
+          ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
+        , ol.proj.transform(firstRoutePoint, this.map.getView().getProjection(), 'EPSG:4326')
+      );
+
+      if(distance > 65 && accuracy < 15 && !this.recalculatingRoute){
+        this.recalculatingRoute = true;
+
+        let distanceToLastPoint = this.lastRecalculatingPosition ?
+          this.wgs84Sphere.haversineDistance(
+              ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
+            , ol.proj.transform(this.lastRecalculatingPosition, this.map.getView().getProjection(), 'EPSG:4326')
+          ) : Number.MAX_VALUE;
+
+        if(!this.lastRecalculatingPosition){
+          this.lastRecalculatingPosition = position;
+          this.lastRecalculatingTime = new Date();
+        }
+        else if(
+          distanceToLastPoint < 25 && 
+          new Date().getTime() - this.lastRecalculatingTime.getTime() < 60000
+        ) return;
+
+        let source = ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326');
+        let destination = ol.proj.transform(
+            this.routeLayer.getSource().getFeatures()[0].getGeometry().getLastCoordinate()
+          , this.map.getView().getProjection(), 'EPSG:4326');
+
+        let loading = this.loadingCtrl.create({ content : 'Recalculando ruta, espere por favor.' });
+        loading.present();
+        let routeSubs = this.routeService.getData([source, destination]).subscribe(
+          routeData =>{
+            this.recalculatingRoute = false;
+            loading.dismiss();
+            routeSubs.unsubscribe();
+            let route : IOSMRouteResponse = routeData.json().routes[0];
+            if(!route) {
+              loading.dismiss();
+              return;
+            }
+            // Obtenemos la ruta en la proyección en la que esté el mapa
+            let feature = this.geojsonParser.readFeature(route.geometry, {
+              dataProjection : `EPSG:4326`,
+              featureProjection : this.map.getView().getProjection()
+            });
+
+            // Limpiamos la capa de rutas
+            this.routeLayer.getSource().clear();
+            this.routeLayer.getSource().refresh();
+            // Añadimos la ruta a la capa de rutas
+            this.routeLayer.getSource().addFeature(feature);
+          }, 
+          err => {loading.dismiss(); alert(err);}
+        );
+      }
+
+      if(distance < 5){
         position = closestPointToRoute;
         [x , y] = closestPointToRoute;
         let newRoute = [];
@@ -593,6 +646,7 @@ export class Page1 {
   notifyChanges(vbFeature){
     if(this.selectedVBStates.length == 0){
       this.selectedVBStates.push({ date : new Date(), feature : vbFeature });
+      alert(this.selectedVBStates.length);
       return;
     }
     let now      = new Date();
@@ -610,7 +664,7 @@ export class Page1 {
     if(vbFeature.values_.available != lastState.values_.available){
       changes['bikes'] = true;
     }
-
+    alert('object keys length' + Object.keys(changes).length);
     if(!Object.keys(changes).length) return;
 
     LocalNotifications.schedule({
