@@ -1,6 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, Injectable } from '@angular/core';
 // Plugins Nativos
-import { LocalNotifications, Geolocation, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
+import { LocalNotifications, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
 // Componentes Angular 2
 import { ModalController, NavController, Platform, LoadingController } from 'ionic-angular';
 //import { Insomnia } from 'ionic-native';
@@ -28,6 +28,7 @@ declare const ol: any;
 declare const proj4: any;
 
 // Componente de Angular 2 - Página principal
+@Injectable()
 @Component({
   selector: 'page-page1',
   templateUrl: 'page1.html',
@@ -438,11 +439,16 @@ export class Page1 {
         return;
       }
 
-      // Obtenemos la posición actual del usuario
-      Geolocation.getCurrentPosition().then( (position : Geoposition)=>{
-        // Ponemos el centro del mapa sobre la posición del usuario
-        this.map.getView().setCenter([position.coords.longitude, position.coords.latitude])
-      })
+      let s = this.locationService
+        .startTracking()
+        .subscribe((loc : Geoposition)=>{
+          if(loc.coords.accuracy < 15){
+            let coords = ol.proj.transform([loc.coords.longitude, loc.coords.latitude], 
+              'EPSG:4326', this.map.getView().getCoordinates());
+            this.map.getView().setCenter(coords);
+            s.unsubscribe();
+          }
+        })
     });
   }
 
@@ -463,67 +469,87 @@ export class Page1 {
 
   // Método para añadir la posición (modo : Watch) del usuario
   addPosition(position, heading, m, speed) {
-    // Coordenadas X, Y actuales
-    let [x, y] = position;
-    // Centramos la posición sobre la ruta si estamos cerca
-    let route = this.routeLayer.getSource().getFeatures()[0];
-    let closestPointToRoute = route.getClosestPoint(position);
-    if(this.wgs84Sphere.haversineDistance(position, closestPointToRoute) < 15){
-      position = closestPointToRoute;
-      [x , y] = closestPointToRoute;
-      let newRoute = [];
-      let continue_ = false;
-      let routeCoords = route.getGeometry().getCoordinates();
-      routeCoords.reduce( (a, b)=>{
-        let geom = new ol.geom.LineString([a, b]);
-        // [minx, miny, maxx, maxy]
-        if(geom.intersectsExtent([x - 0.001, y - 0.001, x + 0.001, y + 0.001])){
-          newRoute.push([x, y], b);
-          continue_ = true;
-        } else if(continue_){
-          newRoute.push(b);
-        }
-      });
-      let feature = new ol.Feature({ geometry : new ol.geom.LineString(newRoute) });
-      this.routeLayer.getSource().clear();
-      this.routeLayer.getSource().refresh();
-      this.routeLayer.getSource().addFeature(feature);
-    }
-    // Pasamos el azimut a radianes
-    heading = this.degToRad(heading);
-    // Coordenadas que se han ido almacenando
-    let fCoords = this.positions.getCoordinates();
-    // Última coordenada almacenada
-    let previous = fCoords[fCoords.length - 1];
-    // Último azimut almacenado
-    let prevHeading = previous && previous[2];
-    // Si hay último azimut
-    if (prevHeading) {
-      // Obtenemos Incremento de Azimut
-      let headingDiff = heading - this.mod(prevHeading);
+    try {
+      // Coordenadas X, Y actuales
+      let [x, y] = position;
+      // Centramos la posición sobre la ruta si estamos cerca
+      let route = this.routeLayer.getSource().getFeatures()[0].getGeometry();
+      let closestPointToRoute = route.getClosestPoint(position);
+      /*alert(this.wgs84Sphere.haversineDistance(
+            ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
+          , ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326')
+      ));*/
+      //alert(position);
+      //alert(closestPointToRoute);
+      if(this.wgs84Sphere.haversineDistance(
+            ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
+          , ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326')
+      ) < 5){
+        position = closestPointToRoute;
+        [x , y] = closestPointToRoute;
+        let newRoute = [];
+        let continue_ = false;
+        let routeCoords = route.getCoordinates();
 
-      // Forzamos a que el cambio sea menor a 180º
-      if (Math.abs(headingDiff) > Math.PI) {
-        // Signo
-        let sign = (headingDiff >= 0) ? 1 : -1;
-        // diff = +-(180 - diff)
-        headingDiff = -sign * (2 * Math.PI - Math.abs(headingDiff));
+        routeCoords.reduce( (a, b)=>{
+          let geom = new ol.geom.LineString([a, b]);
+          // [minx, miny, maxx, maxy]
+          if(!continue_){
+            if(geom.intersectsExtent([x - 0.001, y - 0.001, x + 0.001, y + 0.001])){
+              newRoute.push([x, y], b);
+              continue_ = true;
+            }
+          } else{
+            newRoute.push(b);
+          }
+          return b;
+        });
+        let feature = new ol.Feature({ geometry : new ol.geom.LineString(newRoute) });
+        this.routeLayer.getSource().clear();
+        this.routeLayer.getSource().refresh();
+        this.routeLayer.getSource().addFeature(feature);
       }
-      // Nuevo acimut
-      heading = prevHeading + headingDiff;
-    }
-    // Añadimos nueva Vista del mapa y posición
-    this.positions.appendCoordinate([x, y, heading, m]);
 
-    // Solo se alamacenarán las últimas 20 coordenadas
-    this.positions.setCoordinates(this.positions.getCoordinates().slice(-20));
+      // Pasamos el azimut a radianes
+      heading = this.degToRad(heading);
+      // Coordenadas que se han ido almacenando
+      let fCoords = this.positions.getCoordinates() || [];
+      // Última coordenada almacenada
+      let previous = fCoords[ (fCoords.length || 1) - 1];
+      // Último azimut almacenado
+      let prevHeading = previous && previous[2];
+      // Si hay último azimut
+      if (prevHeading) {
+        // Obtenemos Incremento de Azimut
+        let headingDiff = heading - this.mod(prevHeading);
 
-    // Utilizamos el marcador correcto en cada caso
-    if (heading && speed) {
-      this.markerEl.src = 'assets/icon/images/geolocation_marker_heading.png';
-    } else {
-      this.markerEl.src = 'assets/icon/images/geolocation_marker.png';
+        // Forzamos a que el cambio sea menor a 180º
+        if (Math.abs(headingDiff) > Math.PI) {
+          // Signo
+          let sign = (headingDiff >= 0) ? 1 : -1;
+          // diff = +-(180 - diff)
+          headingDiff = -sign * (2 * Math.PI - Math.abs(headingDiff));
+        }
+        // Nuevo acimut
+        heading = prevHeading + headingDiff;
+      }
+      // Añadimos nueva Vista del mapa y posición
+      this.positions.appendCoordinate([x, y, heading, m]);
+
+      // Solo se alamacenarán las últimas 20 coordenadas
+      this.positions.setCoordinates(this.positions.getCoordinates().slice(-20));
+
+      // Utilizamos el marcador correcto en cada caso
+      if (heading || speed) {
+        this.markerEl.src = 'assets/icon/images/geolocation_marker_heading.png';
+      } else {
+        this.markerEl.src = 'assets/icon/images/geolocation_marker.png';
+      }
     }
+    catch(e){
+      alert(e);
+    }
+
   }
 
   // Recentrar la View poniendo las coordenadas a 3/4 de la pantalla desde la parte superior

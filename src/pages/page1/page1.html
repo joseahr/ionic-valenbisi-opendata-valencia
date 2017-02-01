@@ -16,7 +16,7 @@
     <ion-fab-list side="top">
       <button [hidden]="navigating" ion-fab (click)="getPosition()"><ion-icon name="locate"></ion-icon></button>
       <button [hidden]="navigating" ion-fab (click)="searching = !searching;"><ion-icon name="search"></ion-icon></button>
-      <button [hidden]="!navigating" ion-fab (click)="stopRoute();"><ion-icon name="compass"></ion-icon></button>
+      <button [hidden]="!navigating" ion-fab color="danger" (click)="stopRoute();"><ion-icon name="compass"></ion-icon></button>
     </ion-fab-list>
   </ion-fab>
 </ion-content>
