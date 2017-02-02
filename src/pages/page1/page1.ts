@@ -75,6 +75,8 @@ export class Page1 {
   // Capa que almacena la ruta a la que se está yendo
   routeLayer : any;
 
+  isGettingPosition : any = false;
+
   /* Parámetros de navegación */
   // Lista que almacena las últimas 20 posiciones
   positions : any;
@@ -427,32 +429,42 @@ export class Page1 {
 
   // Método para obtener posición Actual y hacer zoom en el mapa
   getPosition(){
-    // Comprobar si la localización está activada
-    Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
-      // Si la localización no está activa
-      if(!gpsEnabled){
-        // Mostramos dialogo para que confirme que quiere cambiar el estado de la localización
-        Dialogs
-        .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
-        .then(dialogNumber =>{
-          // Si acepta mostramos las opciones de localización del dispositivo
-          if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
-        });
-        // El usuario tendrá que volver a volver a a darle al botón :/
-        return;
-      }
+    if(this.isGettingPosition) return;
 
-      let s = this.locationService
-        .startTracking()
-        .subscribe((loc : Geoposition)=>{
-          if(loc.coords.accuracy < 15){
-            let coords = ol.proj.transform([loc.coords.longitude, loc.coords.latitude], 
-              'EPSG:4326', this.map.getView().getCoordinates());
-            this.map.getView().setCenter(coords);
-            s.unsubscribe();
+    let loading = this.loadingCtrl.create({ content : 'Obteniendo su posición, espere por favor.' });
+    loading.present();
+    try {
+      this.isGettingPosition = true;
+        // Comprobar si la localización está activada
+        Diagnostic.isGpsLocationEnabled().then(gpsEnabled =>{
+          // Si la localización no está activa
+          if(!gpsEnabled){
+            // Mostramos dialogo para que confirme que quiere cambiar el estado de la localización
+            Dialogs
+            .confirm(`Se necesitan permisos para que la aplicación pueda utilizar la localización del dispositivo. ¿Abrir Ajustes de Localización?`, 'Permiso de localización', ['Abrir ajustes', 'Cancelar'])
+            .then(dialogNumber =>{
+              // Si acepta mostramos las opciones de localización del dispositivo
+              if(dialogNumber == 1) Diagnostic.switchToLocationSettings();
+            });
+            // El usuario tendrá que volver a volver a a darle al botón :/
+            return;
           }
-        })
-    });
+
+          let s = this.locationService
+          .startTracking()
+          .subscribe((loc : Geoposition)=>{
+            this.isGettingPosition = false;
+            
+            if(loc.coords.accuracy < 15){
+              loading.dismiss();
+              s.unsubscribe();
+              let coords = ol.proj.transform([loc.coords.longitude, loc.coords.latitude], 
+                'EPSG:4326', this.map.getView().getProjection());
+              this.map.getView().setCenter(coords);
+            }
+          })
+      });
+    } catch (e){ alert(e) }
   }
 
   // Radianes a grados
@@ -646,7 +658,7 @@ export class Page1 {
   notifyChanges(vbFeature){
     if(this.selectedVBStates.length == 0){
       this.selectedVBStates.push({ date : new Date(), feature : vbFeature });
-      alert(this.selectedVBStates.length);
+      //alert(this.selectedVBStates.length);
       return;
     }
     let now      = new Date();
@@ -664,7 +676,7 @@ export class Page1 {
     if(vbFeature.values_.available != lastState.values_.available){
       changes['bikes'] = true;
     }
-    alert('object keys length' + Object.keys(changes).length);
+    //alert('object keys length' + Object.keys(changes).length);
     if(!Object.keys(changes).length) return;
 
     LocalNotifications.schedule({
