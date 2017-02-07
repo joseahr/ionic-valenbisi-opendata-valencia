@@ -23,9 +23,13 @@ tmp/
 temp/
 hooks/
 platforms/
-plugins/cordova.*
+plugins/cordova-*
+plugins/de.*
+plugins/es6-promise-plugin
+plugins/ionic-plugin-keyboard
 plugins/android.json
 plugins/ios.json
+plugins/fetch.json
 www/
 $RECYCLE.BIN/
 
