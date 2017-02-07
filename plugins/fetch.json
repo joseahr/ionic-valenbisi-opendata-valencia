@@ -1,0 +1,131 @@
+{
+    "cordova-plugin-whitelist": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-whitelist@1.3.1"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-console": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-console@1.0.5"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-statusbar": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-statusbar@2.2.1"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-device": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-device@1.1.4"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "ionic-plugin-keyboard": {
+        "source": {
+            "type": "registry",
+            "id": "ionic-plugin-keyboard@~2.2.1"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-splashscreen": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-splashscreen@~4.0.1"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "de.appplant.cordova.plugin.local-notification": {
+        "source": {
+            "type": "registry",
+            "id": "de.appplant.cordova.plugin.local-notification"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-app-event": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-app-event"
+        },
+        "is_top_level": false,
+        "variables": {}
+    },
+    "cordova-plugin-geolocation": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-geolocation"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-compat": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-compat"
+        },
+        "is_top_level": false,
+        "variables": {}
+    },
+    "cordova-plugin-geofence": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-geofence"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "es6-promise-plugin": {
+        "source": {
+            "type": "registry",
+            "id": "es6-promise-plugin"
+        },
+        "is_top_level": false,
+        "variables": {}
+    },
+    "cordova-plugin-request-location-accuracy": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-request-location-accuracy"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-insomnia": {
+        "source": {
+            "type": "git",
+            "url": "https://github.com/EddyVerbruggen/Insomnia-PhoneGap-Plugin.git",
+            "subdir": "."
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova.plugins.diagnostic": {
+        "source": {
+            "type": "registry",
+            "id": "cordova.plugins.diagnostic"
+        },
+        "is_top_level": true,
+        "variables": {}
+    },
+    "cordova-plugin-dialogs": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-dialogs"
+        },
+        "is_top_level": true,
+        "variables": {}
+    }
+}
