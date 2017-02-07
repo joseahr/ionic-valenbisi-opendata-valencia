@@ -3,13 +3,15 @@ import { IonicApp, IonicModule, IonicErrorHandler } from 'ionic-angular';
 import { MyApp } from './app.component';
 import { Page1 } from '../pages/page1/page1';
 import { ModalPage } from '../pages/modal/modal';
+import { LegendPage } from '../pages/legend/legend';
 
 
 @NgModule({
   declarations: [
     MyApp,
     Page1,
-    ModalPage
+    ModalPage,
+    LegendPage
   ],
   imports: [
     IonicModule.forRoot(MyApp)
@@ -18,7 +20,8 @@ import { ModalPage } from '../pages/modal/modal';
   entryComponents: [
     MyApp,
     Page1,
-    ModalPage
+    ModalPage,
+    LegendPage
   ],
   providers: [{provide: ErrorHandler, useClass: IonicErrorHandler}]
 })

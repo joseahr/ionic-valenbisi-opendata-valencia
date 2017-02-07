@@ -2,7 +2,7 @@ import { Component, Injectable } from '@angular/core';
 // Plugins Nativos
 import { LocalNotifications, Geoposition, Diagnostic, Dialogs } from 'ionic-native';
 // Componentes Angular 2
-import { ModalController, NavController, Platform, LoadingController } from 'ionic-angular';
+import { ModalController, NavController, Platform, LoadingController, PopoverController } from 'ionic-angular';
 //import { Insomnia } from 'ionic-native';
 // Interfaces
 import { IVBCollection, INominatimResponse, IOSMRouteResponse } from '../../interfaces';
@@ -21,6 +21,7 @@ import { NominatimService } from '../../services/geocoder.service';
 import { OSMRouteService } from '../../services/routes.service';
 // ModalPage - Página modal para mostrar detalles de una parada de valenbisi
 import { ModalPage } from '../modal/modal';
+import { LegendPage } from '../legend/legend';
 
 // Declaramos la variable ol - OpenLayers 3
 declare const ol: any;
@@ -95,6 +96,7 @@ export class Page1 {
     public navCtrl: NavController, 
     public modalCtrl : ModalController,
     public loadingCtrl : LoadingController,
+    public popoverCtrl : PopoverController,
     public vbService : EstacionesVBService,
     public projService : ProjectionService, 
     public styleService : StyleService,
@@ -354,6 +356,10 @@ export class Page1 {
 
   }
 
+  openLegend(ev){
+    this.popoverCtrl.create(LegendPage).present({ ev });
+  }
+
   // Método para cerrar la atribución del mapa de OL3
   hideAttribution(){
     // Recorremos los controles del mapa
@@ -495,61 +501,10 @@ export class Page1 {
 
       let distance = this.wgs84Sphere.haversineDistance(
           ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
-        , ol.proj.transform(firstRoutePoint, this.map.getView().getProjection(), 'EPSG:4326')
+        , ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326')
       );
 
-      if(distance > 65 && accuracy < 15 && !this.recalculatingRoute){
-        this.recalculatingRoute = true;
-
-        let distanceToLastPoint = this.lastRecalculatingPosition ?
-          this.wgs84Sphere.haversineDistance(
-              ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
-            , ol.proj.transform(this.lastRecalculatingPosition, this.map.getView().getProjection(), 'EPSG:4326')
-          ) : Number.MAX_VALUE;
-
-        if(!this.lastRecalculatingPosition){
-          this.lastRecalculatingPosition = position;
-          this.lastRecalculatingTime = new Date();
-        }
-        else if(
-          distanceToLastPoint < 25 && 
-          new Date().getTime() - this.lastRecalculatingTime.getTime() < 60000
-        ) return;
-
-        let source = ol.proj.transform(closestPointToRoute, this.map.getView().getProjection(), 'EPSG:4326');
-        let destination = ol.proj.transform(
-            this.routeLayer.getSource().getFeatures()[0].getGeometry().getLastCoordinate()
-          , this.map.getView().getProjection(), 'EPSG:4326');
-
-        let loading = this.loadingCtrl.create({ content : 'Recalculando ruta, espere por favor.' });
-        loading.present();
-        let routeSubs = this.routeService.getData([source, destination]).subscribe(
-          routeData =>{
-            this.recalculatingRoute = false;
-            loading.dismiss();
-            routeSubs.unsubscribe();
-            let route : IOSMRouteResponse = routeData.json().routes[0];
-            if(!route) {
-              loading.dismiss();
-              return;
-            }
-            // Obtenemos la ruta en la proyección en la que esté el mapa
-            let feature = this.geojsonParser.readFeature(route.geometry, {
-              dataProjection : `EPSG:4326`,
-              featureProjection : this.map.getView().getProjection()
-            });
-
-            // Limpiamos la capa de rutas
-            this.routeLayer.getSource().clear();
-            this.routeLayer.getSource().refresh();
-            // Añadimos la ruta a la capa de rutas
-            this.routeLayer.getSource().addFeature(feature);
-          }, 
-          err => {loading.dismiss(); alert(err);}
-        );
-      }
-
-      if(distance < 5){
+      if(distance < 10){
         position = closestPointToRoute;
         [x , y] = closestPointToRoute;
         let newRoute = [];
@@ -609,6 +564,61 @@ export class Page1 {
         this.markerEl.src = 'assets/icon/images/geolocation_marker_heading.png';
       } else {
         this.markerEl.src = 'assets/icon/images/geolocation_marker.png';
+      }
+
+      if(distance > 65 && accuracy < 15 && !this.recalculatingRoute){
+        this.recalculatingRoute = true;
+
+        let distanceToLastPoint = this.lastRecalculatingPosition ?
+          this.wgs84Sphere.haversineDistance(
+              ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326')
+            , ol.proj.transform(this.lastRecalculatingPosition, this.map.getView().getProjection(), 'EPSG:4326')
+          ) : Number.MAX_VALUE;
+
+        if(!this.lastRecalculatingPosition){
+          this.lastRecalculatingPosition = position;
+          this.lastRecalculatingTime = new Date();
+        }
+
+        if(
+          distanceToLastPoint < 25 && 
+          new Date().getTime() - this.lastRecalculatingTime.getTime() < 60000
+        ) {
+          // No hacer nada
+        }
+        else {
+          let source = ol.proj.transform(position, this.map.getView().getProjection(), 'EPSG:4326');
+          let destination = ol.proj.transform(
+              this.routeLayer.getSource().getFeatures()[0].getGeometry().getLastCoordinate()
+            , this.map.getView().getProjection(), 'EPSG:4326');
+
+          let loading = this.loadingCtrl.create({ content : 'Recalculando ruta, espere por favor.' });
+          loading.present();
+          let routeSubs = this.routeService.getData([source, destination]).subscribe(
+            routeData =>{
+              this.recalculatingRoute = false;
+              loading.dismiss();
+              routeSubs.unsubscribe();
+              let route : IOSMRouteResponse = routeData.json().routes[0];
+              if(!route) {
+                loading.dismiss();
+                return;
+              }
+              // Obtenemos la ruta en la proyección en la que esté el mapa
+              let feature = this.geojsonParser.readFeature(route.geometry, {
+                dataProjection : `EPSG:4326`,
+                featureProjection : this.map.getView().getProjection()
+              });
+
+              // Limpiamos la capa de rutas
+              this.routeLayer.getSource().clear();
+              this.routeLayer.getSource().refresh();
+              // Añadimos la ruta a la capa de rutas
+              this.routeLayer.getSource().addFeature(feature);
+            }, 
+            err => {loading.dismiss(); alert(err);}
+          );
+        }
       }
     }
     catch(e){

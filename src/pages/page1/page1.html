@@ -1,10 +1,15 @@
 <ion-header>
   <ion-navbar>
     <ion-searchbar #sb [hidden]="!searching" autocorrect="on" spellcheck=true (ionInput)="searchAddress($event)" (ionBlur)="searching = false;" animated=true placeholder="Buscar calle"></ion-searchbar>
-    <button *ngIf="!searching" ion-button menuToggle>
-      <ion-icon name="menu"></ion-icon>
-    </button>
+      <button *ngIf="!searching" ion-button menuToggle>
+        <ion-icon name="menu"></ion-icon>
+      </button>
     <ion-title *ngIf="!searching">ValenBisi</ion-title>
+    <ion-buttons end>
+      <button *ngIf="!searching" icon-only ion-button (click)="openLegend($event)">
+        <ion-icon name="information-circle"></ion-icon>
+      </button>
+    </ion-buttons>
   </ion-navbar>
 </ion-header>
 
